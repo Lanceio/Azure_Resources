@@ -1,0 +1,134 @@
+
+name: deploy-infra
+
+on:
+  workflow_dispatch:    # Manual trigger
+  push:
+    branches: [ "main" ]
+
+# Global variables (mirroring Azure DevOps variables)
+env:
+  LOCATION: 'australiaeast'
+  TEMPLATE_FILE: 'infra/core/main.bicep'
+  TEST_PARAM_JSON: 'infra/params/test.json'
+  PROD_PARAM_JSON: 'infra/params/prod.json'
+  TEST_RG_NAME: 'rg-ai-core-test'
+  PROD_RG_NAME: 'rg-ai-core-prod'
+
+  # Toggle what-if previews (optional)
+  RUN_WHAT_IF_TEST: 'true'
+  RUN_WHAT_IF_PROD: 'true'
+
+  # Subscription IDs (from your DevOps pipeline)
+  TEST_SUBSCRIPTION_ID: 'bfe60da2-f477-42dc-b9cc-7b90b087e92e'
+  PROD_SUBSCRIPTION_ID: '1c147026-fa0d-40e2-a7ed-aa606a8c4ef9'
+
+jobs:
+  # ------------------------------
+  # Stage 1: Approval gate - Test
+  # ------------------------------
+  approve_test:
+    name: Approval Gate - Test
+    runs-on: ubuntu-latest
+    environment: test    # Requires approval via GitHub Environments (Settings → Environments → test)
+    steps:
+      - name: Approval placeholder
+        run: echo "Waiting for TEST environment approval..."
+
+  # ------------------------------
+  # Stage 2: Deploy to Test
+  # ------------------------------
+  deploy_test:
+    name: Deploy - Test
+    runs-on: ubuntu-latest
+    needs: approve_test
+    # You can omit environment here if you don't want a second approval for the deploy job.
+    # If you need environment-scoped secrets, set `environment: test` and note it will require approval again.
+    steps:
+      - uses: actions/checkout@v4
+
+      # Login using Test Service Principal (store JSON in repo or environment secrets)
+      - name: Azure Login (Test)
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_TEST }}
+
+      - name: Set subscription (Test)
+        run: az account set --subscription "${{ env.TEST_SUBSCRIPTION_ID }}"
+
+      - name: Ensure Resource Group exists (Test)
+        run: az group create -n "${{ env.TEST_RG_NAME }}" -l "${{ env.LOCATION }}"
+
+      - name: What-if (Test)
+        if: ${{ env.RUN_WHAT_IF_TEST == 'true' }}
+        run: |
+          set -euo pipefail
+          echo "Running what-if for TEST..."
+          az deployment group what-if \
+            --resource-group "${{ env.TEST_RG_NAME }}" \
+            --template-file "${{ env.TEMPLATE_FILE }}" \
+            --parameters @"${{ env.TEST_PARAM_JSON }}"
+
+      - name: Deploy (Test)
+        run: |
+          set -euo pipefail
+          echo "Deploying to TEST..."
+          az deployment group create \
+            --resource-group "${{ env.TEST_RG_NAME }}" \
+            --template-file "${{ env.TEMPLATE_FILE }}" \
+            --parameters @"${{ env.TEST_PARAM_JSON }}"
+
+  # ------------------------------
+  # Stage 3: Approval gate - Prod
+  # ------------------------------
+  approve_prod:
+    name: Approval Gate - Prod
+    runs-on: ubuntu-latest
+    needs: deploy_test
+    environment: prod    # Requires approval via GitHub Environments (Settings → Environments → prod)
+    steps:
+      - name: Approval placeholder
+        run: echo "Waiting for PROD environment approval..."
+
+  # ------------------------------
+  # Stage 4: Deploy to Prod
+  # ------------------------------
+  deploy_prod:
+    name: Deploy - Prod
+    runs-on: ubuntu-latest
+    needs: approve_prod
+    # As above, add `environment: prod` only if you want a second approval for the deploy job.
+    steps:
+      - uses: actions/checkout@v4
+
+      # Login using Prod Service Principal (store JSON in repo or environment secrets)
+      - name: Azure Login (Prod)
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_PROD }}
+
+      - name: Set subscription (Prod)
+        run: az account set --subscription "${{ env.PROD_SUBSCRIPTION_ID }}"
+
+      - name: Ensure Resource Group exists (Prod)
+        run: az group create -n "${{ env.PROD_RG_NAME }}" -l "${{ env.LOCATION }}"
+
+      - name: What-if (Prod)
+        if: ${{ env.RUN_WHAT_IF_PROD == 'true' }}
+        run: |
+          set -euo pipefail
+          echo "Running what-if for PROD..."
+          az deployment group what-if \
+            --resource-group "${{ env.PROD_RG_NAME }}" \
+            --template-file "${{ env.TEMPLATE_FILE }}" \
+            --parameters @"${{ env.PROD_PARAM_JSON }}"
+
+      - name: Deploy (Prod)
+        run: |
+          set -euo pipefail
+          echo "Deploying to PROD..."
+          az deployment group create \
+            --resource-group "${{ env.PROD_RG_NAME }}" \
+            --template-file "${{ env.TEMPLATE_FILE }}" \
+            --parameters @"${{ env.PROD_PARAM_JSON }}"
+
