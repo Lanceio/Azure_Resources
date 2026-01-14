@@ -131,4 +131,3 @@ jobs:
             --resource-group "${{ env.PROD_RG_NAME }}" \
             --template-file "${{ env.TEMPLATE_FILE }}" \
             --parameters @"${{ env.PROD_PARAM_JSON }}"
-
