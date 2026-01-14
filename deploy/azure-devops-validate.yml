@@ -1,0 +1,62 @@
+
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  location: 'australiaeast'
+  templateFile: 'infra/core/main.bicep'
+  testParamJson: 'infra/params/test.json'
+  prodParamJson: 'infra/params/prod.json'
+  testRgName: 'rg-ai-core-test'
+  prodRgName: 'rg-ai-core-prod'
+
+stages:
+- stage: Validate_Test
+  displayName: 'Validate (what-if) - Test'
+  jobs:
+  - job: WhatIfTest
+    displayName: 'What-if Test'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - checkout: self
+    - task: AzureCLI@2
+      displayName: 'Run what-if for Test'
+      inputs:
+        azureSubscription: 'SC-Azure-DevOps-Test'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          set -euo pipefail
+          echo "Running what-if for TEST..."
+          az group create -n "${{ variables.testRgName }}" -l "${{ variables.location }}"
+          az deployment group what-if \
+            --resource-group "${{ variables.testRgName }}" \
+            --template-file "${{ variables.templateFile }}" \
+            --parameters @"${{ variables.testParamJson }}"
+
+- stage: Validate_Prod
+  displayName: 'Validate (what-if) - Prod'
+  jobs:
+  - job: WhatIfProd
+    displayName: 'What-if Prod'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - checkout: self
+    - task: AzureCLI@2
+      displayName: 'Run what-if for Prod'
+      inputs:
+        azureSubscription: 'SC-Azure-DevOps-Prod'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          set -euo pipefail
+          echo "Running what-if for PROD..."
+          az group create -n "${{ variables.prodRgName }}" -l "${{ variables.location }}"
+          az deployment group what-if \
+            --resource-group "${{ variables.prodRgName }}" \
+            --template-file "${{ variables.templateFile }}" \
+            --parameters @"${{ variables.prodParamJson }}"
